@@ -1,0 +1,179 @@
+# Model-specific Hyperparameter Configurations
+
+# TrAISformer Model Configurations
+traisformer:
+  # Architecture
+  architecture:
+    d_model: 256
+    nhead: 8
+    num_encoder_layers: 6
+    dim_feedforward: 1024
+    dropout: 0.1
+    activation: "relu"
+    
+  # Input processing
+  input:
+    max_sequence_length: 512
+    vocab_size: 10000
+    embedding_dim: 256
+    position_encoding: true
+    
+  # Four-hot encoding
+  encoding:
+    latitude_bins: 100
+    longitude_bins: 100
+    speed_bins: 50
+    course_bins: 36
+    
+  # Training specific
+  training:
+    learning_rate: 0.0001
+    weight_decay: 0.01
+    warmup_steps: 1000
+    max_grad_norm: 1.0
+    
+  # Loss function
+  loss:
+    type: "cross_entropy"
+    label_smoothing: 0.1
+    
+# Clustering Model Configurations
+clustering:
+  # DBSCAN parameters
+  dbscan:
+    eps: 0.5
+    min_samples: 5
+    metric: "euclidean"
+    algorithm: "auto"
+    leaf_size: 30
+    
+  # Isolation Forest parameters
+  isolation_forest:
+    n_estimators: 100
+    max_samples: "auto"
+    contamination: 0.1
+    max_features: 1.0
+    bootstrap: false
+    random_state: 42
+    
+  # HDBSCAN parameters (alternative)
+  hdbscan:
+    min_cluster_size: 5
+    min_samples: 3
+    cluster_selection_epsilon: 0.0
+    alpha: 1.0
+    
+  # Feature preprocessing for clustering
+  preprocessing:
+    scaler: "standard"  # standard, minmax, robust
+    pca_components: 50
+    
+# Ensemble Model Configurations
+ensemble:
+  # Base model weights
+  base_weights:
+    traisformer: 0.4
+    clustering: 0.3
+    statistical: 0.3
+    
+  # Meta-learner configurations
+  meta_learner:
+    type: "xgboost"
+    
+    # XGBoost parameters
+    xgboost:
+      n_estimators: 100
+      max_depth: 6
+      learning_rate: 0.1
+      subsample: 0.8
+      colsample_bytree: 0.8
+      random_state: 42
+      
+    # Random Forest parameters (alternative)
+    random_forest:
+      n_estimators: 100
+      max_depth: 10
+      min_samples_split: 2
+      min_samples_leaf: 1
+      random_state: 42
+      
+    # Logistic Regression parameters (alternative)
+    logistic_regression:
+      C: 1.0
+      penalty: "l2"
+      solver: "liblinear"
+      random_state: 42
+      
+  # Ensemble strategy
+  strategy:
+    type: "weighted_average"  # weighted_average, voting, stacking
+    cross_validation_folds: 5
+    
+# Statistical Model Configurations
+statistical:
+  # One-Class SVM
+  one_class_svm:
+    kernel: "rbf"
+    gamma: "scale"
+    nu: 0.1
+    
+  # Local Outlier Factor
+  lof:
+    n_neighbors: 20
+    algorithm: "auto"
+    leaf_size: 30
+    contamination: 0.1
+    
+  # Elliptic Envelope
+  elliptic_envelope:
+    contamination: 0.1
+    support_fraction: null
+    random_state: 42
+
+# Deep Learning Model Configurations
+deep_learning:
+  # LSTM Autoencoder
+  lstm_autoencoder:
+    input_dim: 100
+    hidden_dims: [64, 32, 16, 32, 64]
+    sequence_length: 50
+    dropout: 0.2
+    
+  # Variational Autoencoder
+  vae:
+    input_dim: 100
+    hidden_dims: [64, 32]
+    latent_dim: 16
+    beta: 1.0
+    
+  # GAN-based Anomaly Detection
+  gan:
+    generator:
+      input_dim: 100
+      hidden_dims: [128, 64]
+      output_dim: 100
+    discriminator:
+      input_dim: 100
+      hidden_dims: [64, 32]
+      output_dim: 1
+
+# Hyperparameter Optimization
+hyperopt:
+  # Optuna configuration
+  optuna:
+    n_trials: 100
+    timeout: 3600  # seconds
+    sampler: "tpe"  # tpe, random, cmaes
+    
+  # Search spaces
+  search_spaces:
+    traisformer:
+      d_model: [128, 256, 512]
+      nhead: [4, 8, 16]
+      num_layers: [3, 6, 9]
+      learning_rate: [0.0001, 0.001, 0.01]
+      
+    clustering:
+      eps: [0.1, 0.5, 1.0, 2.0]
+      min_samples: [3, 5, 10, 15]
+      contamination: [0.05, 0.1, 0.15, 0.2] 

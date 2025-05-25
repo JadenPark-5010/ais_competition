@@ -1,0 +1,115 @@
+# Global Configuration for Maritime Anomaly Detection
+
+# Data Configuration
+data:
+  train_path: "data/train/"
+  test_path: "data/test/"
+  validation_split: 0.2
+  batch_size: 32
+  num_workers: 4
+  shuffle: true
+  
+# Feature Engineering Configuration
+features:
+  # Kinematic features
+  kinematic:
+    enable: true
+    window_size: 10
+    speed_threshold: 0.1
+    acceleration_threshold: 0.5
+    
+  # Geographic features
+  geographic:
+    enable: true
+    distance_threshold: 1000  # meters
+    coastal_distance: 5000   # meters
+    
+  # Temporal features
+  temporal:
+    enable: true
+    time_window: 3600  # seconds
+    night_hours: [22, 6]
+    
+  # Behavioral features
+  behavioral:
+    enable: true
+    maneuver_threshold: 30  # degrees
+    stop_threshold: 0.5     # knots
+    
+  # TrAISformer features
+  traisformer:
+    enable: true
+    lat_bins: 100
+    lon_bins: 100
+    speed_bins: 50
+    course_bins: 36
+
+# Model Configuration
+models:
+  # TrAISformer Model
+  traisformer:
+    d_model: 256
+    nhead: 8
+    num_layers: 6
+    dropout: 0.1
+    max_seq_length: 512
+    
+  # Clustering Model
+  clustering:
+    dbscan:
+      eps: 0.5
+      min_samples: 5
+    isolation_forest:
+      contamination: 0.1
+      n_estimators: 100
+      
+  # Ensemble Model
+  ensemble:
+    weights: [0.4, 0.3, 0.3]  # [traisformer, clustering, other]
+    meta_learner: "xgboost"
+    
+# Training Configuration
+training:
+  epochs: 100
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  patience: 10
+  min_delta: 0.001
+  
+  # Optimizer
+  optimizer: "adam"
+  scheduler: "cosine"
+  
+  # Loss function
+  loss_function: "cross_entropy"
+  class_weights: [1.0, 2.0]  # [normal, anomaly]
+  
+# Validation Configuration
+validation:
+  metrics: ["accuracy", "precision", "recall", "f1", "auc"]
+  cross_validation: 5
+  
+# Logging Configuration
+logging:
+  level: "INFO"
+  log_dir: "logs/"
+  experiment_name: "maritime_anomaly_detection"
+  use_wandb: true
+  
+# Output Configuration
+output:
+  model_dir: "models/"
+  results_dir: "results/"
+  submission_dir: "submissions/"
+  
+# Hardware Configuration
+hardware:
+  device: "auto"  # auto, cpu, cuda
+  mixed_precision: true
+  
+# Preprocessing Configuration
+preprocessing:
+  normalize: true
+  handle_missing: "interpolate"  # drop, interpolate, forward_fill
+  outlier_detection: true
+  outlier_threshold: 3.0 
