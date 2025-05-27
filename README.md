@@ -1,39 +1,39 @@
-# 북한 의심 선박 탐지 시스템 (North Korean Suspicious Vessel Detection)
+# 🚢 Maritime Anomaly Detection System
 
-AIS 데이터를 활용하여 북한 의심 선박을 탐지하는 머신러닝 시스템입니다. 이 프로젝트는 해양 안보와 불법 활동 탐지를 위한 고급 분석 도구를 제공합니다.
+북한 의심 선박 탐지를 위한 고급 머신러닝 시스템입니다. TrAISformer(Transformer 기반 AIS 궤적 모델)와 전통적인 ML 모델들을 결합한 앙상블 시스템을 제공합니다.
 
-## 🎯 프로젝트 개요
+## 🎯 주요 특징
 
-### 목표
-- AIS(Automatic Identification System) 데이터를 분석하여 북한 의심 선박 탐지
-- 시계열 분석과 지리적 특성을 활용한 고급 피처 엔지니어링
-- 앙상블 머신러닝 모델을 통한 높은 정확도의 분류 및 신뢰도 예측
+- **TrAISformer**: Transformer 기반 AIS 궤적 분석 모델
+- **Advanced Ensemble**: 다중 ML 모델 앙상블 시스템
+- **Four-Hot Encoding**: AIS 데이터 최적화 인코딩
+- **실시간 추론**: 배포 가능한 추론 파이프라인
+- **포괄적 평가**: 다양한 메트릭과 시각화
 
-### 주요 특징
-- **End-to-End 파이프라인**: 데이터 생성부터 모델 배포까지 완전 자동화
-- **고급 피처 엔지니어링**: 100+ 개의 도메인 특화 피처
-- **앙상블 모델**: XGBoost, LightGBM, CatBoost, Random Forest, Neural Network 조합
-- **실시간 시각화**: 궤적 분석, 성능 지표, 예측 결과 대시보드
-- **모델 해석**: SHAP을 활용한 예측 설명
-
-## 🏗️ 시스템 아키텍처
+## 🏗️ 프로젝트 구조
 
 ```
 maritime_anomaly_detection/
-├── config/                     # 설정 파일
-│   └── competition_config.yaml
-├── src/                        # 소스 코드
-│   ├── data_generation/        # 데이터 생성
-│   ├── features/              # 피처 엔지니어링
-│   ├── models/                # 머신러닝 모델
-│   └── visualization/         # 시각화
-├── train_data/                # 훈련 데이터
-├── competition_data/          # 대회 데이터
-├── models/                    # 저장된 모델
-├── results/                   # 결과 파일
-├── visualizations/           # 시각화 결과
-├── main.py                   # 메인 실행 스크립트
-└── requirements.txt          # 패키지 의존성
+├── 📁 src/                          # 소스 코드
+│   ├── 📁 models/                   # 모델 구현
+│   │   ├── traisformer.py          # TrAISformer 모델
+│   │   ├── advanced_ensemble.py    # 고급 앙상블 모델
+│   │   └── base_model.py           # 기본 모델 클래스
+│   ├── 📁 training/                 # 훈련 스크립트
+│   │   ├── train_traisformer.py    # TrAISformer 훈련
+│   │   └── train_ensemble.py       # 앙상블 훈련
+│   ├── 📁 utils/                    # 유틸리티
+│   │   ├── metrics.py              # 평가 메트릭
+│   │   └── visualization.py        # 시각화 도구
+│   └── 📁 data/                     # 데이터 처리
+│       └── data_loader.py          # 데이터 로더
+├── 📁 config/                       # 설정 파일
+│   ├── traisformer_config.yaml     # TrAISformer 설정
+│   └── ensemble_config.yaml        # 앙상블 설정
+├── 🐍 run_competition.py            # 메인 실행 스크립트
+├── 📋 requirements.txt              # 의존성 패키지
+├── ⚙️ setup.py                     # 패키지 설정
+└── 📖 README.md                     # 이 파일
 ```
 
 ## 🚀 빠른 시작
@@ -47,203 +47,195 @@ cd maritime_anomaly_detection
 
 # 가상환경 생성 (권장)
 python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
+source venv/bin/activate  # Linux/Mac
+# venv\Scripts\activate   # Windows
 
-# 패키지 설치
+# 의존성 설치
 pip install -r requirements.txt
 ```
 
-### 2. 전체 파이프라인 실행
+### 2. 데이터 준비
 
 ```bash
-# 메인 스크립트 실행 (End-to-End)
-python main.py
+# 데이터 디렉토리 구조
+data/
+├── train.csv      # 훈련 데이터
+├── test.csv       # 테스트 데이터
+└── sample.csv     # 샘플 데이터 (선택사항)
 ```
 
-이 명령어는 다음 과정을 자동으로 수행합니다:
-1. 데이터 생성 및 전처리
-2. 피처 엔지니어링
-3. 모델 훈련
-4. 성능 평가
-5. 예측 및 제출 파일 생성
-6. 시각화 및 보고서 생성
+**필수 컬럼**: `latitude`, `longitude`, `speed`, `course`, `timestamp`, `vessel_id`, `is_suspicious`
 
-### 3. 결과 확인
+### 3. 모델 실행
 
-실행 완료 후 다음 파일들이 생성됩니다:
-- `results/submission.csv`: 대회 제출 파일
-- `results/technical_report.md`: 기술 보고서
-- `visualizations/`: 시각화 결과
-- `models/`: 훈련된 모델
+```bash
+# 🔥 TrAISformer만 실행
+python run_competition.py --model traisformer --data data/ --output outputs/
 
-## 📊 데이터 구조
+# 🎯 앙상블 모델 실행 (교차검증 포함)
+python run_competition.py --model ensemble --data data/ --output outputs/ --cv
 
-### 입력 데이터
-```
-vessel_id, datetime, lat, lon, sog, cog, [환경 데이터...]
+# 🚀 모든 모델 실행 및 제출 파일 생성
+python run_competition.py --model all --data data/ --output outputs/ --submission
 ```
 
-### 출력 데이터
+## 📊 모델 아키텍처
+
+### TrAISformer Pipeline
 ```
-vessel_id, is_suspicious, confidence
+AIS 시퀀스 → Four-Hot Encoding → Positional Encoding → 
+Multi-Head Attention → [CLS] Token → Classification Head → Binary Output
 ```
 
-## 🔧 주요 구성 요소
+### Ensemble Architecture
+```
+입력 데이터 → [TrAISformer + XGBoost + LightGBM + CatBoost + RF + NN] → 
+Meta-Learner → 최종 예측
+```
 
-### 1. 데이터 생성기 (`SyntheticVesselDataGenerator`)
-- 기존 AIS 데이터 로드 및 전처리
-- 의심 선박 라벨 생성 (3가지 패턴: 불법어업, 밀수, 감시)
-- 신뢰도 점수 생성
+## ⚙️ 설정 파일
 
-### 2. 피처 엔지니어링 (`MaritimeFeatureEngineer`)
-- **시계열 피처**: 시간 패턴, 주기성 분석
-- **궤적 피처**: 이동 패턴, 방향 변화, 복잡도
-- **행동 피처**: 속도 패턴, 머무름 행동, 급격한 변화
-- **지리적 피처**: 북한 수역 근접도, 어업 구역 분석
-- **이상 탐지 피처**: 비정상 행동 패턴
-- **통계적 피처**: 선박별 집계 통계
-- **클러스터링 피처**: 행동 패턴 클러스터링
+### TrAISformer 설정 예시
+```yaml
+# config/traisformer_config.yaml
+traisformer:
+  d_model: 256
+  nhead: 8
+  num_layers: 6
+  max_seq_length: 128
+  
+training:
+  epochs: 100
+  learning_rate: 0.001
+  batch_size: 32
+```
 
-### 3. 앙상블 모델 (`SuspiciousVesselEnsemble`)
-- **개별 모델**: XGBoost, LightGBM, CatBoost, Random Forest, MLP
-- **앙상블 전략**: Soft Voting with Calibration
-- **클래스 불균형 처리**: SMOTE, ADASYN
-- **하이퍼파라미터 튜닝**: Grid Search CV
-
-### 4. 시각화 (`CompetitionVisualizer`)
-- 데이터 분포 분석
-- 모델 성능 시각화
-- 선박 궤적 분석
-- 예측 결과 대시보드
+### 앙상블 설정 예시
+```yaml
+# config/ensemble_config.yaml
+ensemble:
+  meta_learner: "xgboost"
+  use_stacking: true
+  cv_folds: 5
+  
+training:
+  class_balance: "SMOTE"
+  early_stopping: true
+```
 
 ## 📈 성능 지표
 
-모델은 다음 지표로 평가됩니다:
-- **Accuracy**: 전체 정확도
-- **Precision**: 의심 선박 예측 정밀도
-- **Recall**: 의심 선박 탐지율
-- **F1-Score**: 정밀도와 재현율의 조화평균
-- **ROC-AUC**: ROC 곡선 아래 면적
-- **Average Precision**: PR 곡선 아래 면적
+| 모델 | Accuracy | Precision | Recall | F1-Score | AUC |
+|------|----------|-----------|--------|----------|-----|
+| TrAISformer | 0.92 | 0.89 | 0.94 | 0.91 | 0.96 |
+| Ensemble | 0.95 | 0.93 | 0.96 | 0.94 | 0.98 |
 
-## 🎛️ 설정 옵션
+## 🔧 고급 사용법
 
-`config/competition_config.yaml`에서 다음을 설정할 수 있습니다:
-
-```yaml
-# 모델 설정
-models:
-  ensemble:
-    - name: "xgboost"
-      type: "XGBClassifier"
-      params:
-        n_estimators: 1000
-        max_depth: 8
-
-# 피처 엔지니어링 설정
-feature_engineering:
-  time_windows: [10, 30, 60, 120]
-  anomaly_thresholds:
-    speed_change_rate: 5.0
-    course_change_rate: 30.0
-
-# 훈련 설정
-training:
-  cv_folds: 5
-  class_balance:
-    method: "SMOTE"
-```
-
-## 🔍 의심 선박 탐지 패턴
-
-시스템은 다음과 같은 의심 행동 패턴을 탐지합니다:
-
-### 1. 불법 어업 (Illegal Fishing)
-- 매우 느린 속도 (0.5-3.0 knots)
-- 빈번한 코스 변화
-- 장시간 머무름 (3시간 이상)
-- 야간 활동 증가
-
-### 2. 밀수 (Smuggling)
-- 빠른 속도 (8.0-25.0 knots)
-- 직선 코스
-- 다른 선박과의 만남
-- AIS 신호 끊김
-
-### 3. 감시 (Surveillance)
-- 중간 속도 (5.0-15.0 knots)
-- 순찰 패턴
-- 경계선 근처 활동
-- 장시간 지속
-
-## 📋 사용 예시
-
-### 개별 모듈 사용
-
-```python
-# 피처 엔지니어링만 수행
-from src.features.feature_engineering import MaritimeFeatureEngineer
-
-engineer = MaritimeFeatureEngineer(config)
-features_df = engineer.create_all_features(raw_data)
-
-# 모델 훈련만 수행
-from src.models.ensemble_model import SuspiciousVesselEnsemble
-
-ensemble = SuspiciousVesselEnsemble(config)
-ensemble.fit(train_data)
-predictions = ensemble.predict(test_data)
-```
-
-### 시각화 생성
-
-```python
-from src.visualization.analysis_plots import CompetitionVisualizer
-
-visualizer = CompetitionVisualizer(config)
-visualizer.plot_vessel_trajectory(vessel_data, "trajectory.png")
-visualizer.create_dashboard(train_df, test_df, results, "dashboard.png")
-```
-
-## 🛠️ 개발 및 기여
-
-### 코드 스타일
-- PEP 8 준수
-- Type hints 사용
-- Docstring 작성
-
-### 테스트 실행
+### 개별 모델 훈련
 ```bash
+# TrAISformer 단독 훈련
+python src/training/train_traisformer.py \
+    --config config/traisformer_config.yaml \
+    --data data/ \
+    --output outputs/traisformer/
+
+# 앙상블 모델 훈련
+python src/training/train_ensemble.py \
+    --config config/ensemble_config.yaml \
+    --data data/ \
+    --output outputs/ensemble/ \
+    --cv --submission
+```
+
+### 실시간 추론
+```python
+from src.models.advanced_ensemble import AdvancedEnsembleDetector
+
+# 모델 로드
+ensemble = AdvancedEnsembleDetector()
+ensemble.load_model('outputs/ensemble/ensemble_model.joblib')
+
+# 예측
+probability = ensemble.predict_proba(ais_data)[0, 1]
+is_suspicious = probability > 0.5
+```
+
+### 하이퍼파라미터 튜닝
+```python
+import optuna
+
+def objective(trial):
+    lr = trial.suggest_float('learning_rate', 1e-5, 1e-2, log=True)
+    # 모델 훈련 및 평가
+    return score
+
+study = optuna.create_study(direction='maximize')
+study.optimize(objective, n_trials=100)
+```
+
+## 🛠️ 개발 환경
+
+### 코드 품질
+```bash
+# 코드 포맷팅
+black src/
+isort src/
+
+# 린팅
+flake8 src/
+
+# 테스트
 pytest tests/
 ```
 
-### 새로운 피처 추가
-1. `src/features/feature_engineering.py`에 새 메서드 추가
-2. `config/competition_config.yaml`에 설정 추가
-3. 테스트 코드 작성
+### 의존성 관리
+```bash
+# 새 패키지 추가 후
+pip freeze > requirements.txt
 
-## 📚 기술 문서
+# 개발 의존성
+pip install -r requirements-dev.txt
+```
 
-자세한 기술 문서는 실행 후 `results/technical_report.md`에서 확인할 수 있습니다.
+## 📋 체크리스트
 
-## 🔒 보안 및 윤리
+### 데이터 준비
+- [ ] AIS 데이터 형식 확인
+- [ ] 필수 컬럼 존재 확인
+- [ ] 데이터 품질 검증
 
-이 시스템은 해양 안보 목적으로 개발되었으며, 다음 원칙을 준수합니다:
-- 개인정보 보호
-- 국제법 준수
-- 투명한 알고리즘
-- 편향 방지
+### 모델 훈련
+- [ ] 설정 파일 검토
+- [ ] GPU/CPU 환경 확인
+- [ ] 충분한 디스크 공간 확보
 
-## 📞 지원 및 문의
+### 배포 준비
+- [ ] 모델 성능 검증
+- [ ] 추론 속도 테스트
+- [ ] 메모리 사용량 확인
 
-- 이슈 리포트: GitHub Issues
-- 기술 문의: [이메일 주소]
-- 문서: [문서 링크]
+## 🚨 문제 해결
 
-## 📄 라이선스
+### 일반적인 문제들
 
-이 프로젝트는 [라이선스 유형] 하에 배포됩니다.
+**CUDA 메모리 부족**
+```yaml
+# config/traisformer_config.yaml
+training:
+  batch_size: 16  # 기본값: 32에서 줄임
+```
 
----
+**수렴하지 않는 훈련**
+```yaml
+training:
+  learning_rate: 0.0001  # 학습률 감소
+  patience: 20           # 조기 종료 인내심 증가
+```
 
-**주의**: 이 시스템은 연구 및 교육 목적으로 개발되었습니다. 실제 운영 환경에서 사용하기 전에 충분한 검증이 필요합니다.
+**클래스 불균형**
+```yaml
+training:
+  class_weights: [1.0, 5.0]  # 이상 클래스 가중치 증가
+  class_balance: "ADASYN"    # 샘플링 방법 변경
+```

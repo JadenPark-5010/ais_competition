@@ -1,0 +1,219 @@
+# Advanced Ensemble Configuration for Maritime Anomaly Detection
+
+# Data Configuration
+data:
+  batch_size: 32
+  num_workers: 4
+  validation_split: 0.2
+  test_split: 0.15
+  shuffle: true
+
+# Feature Engineering Configuration
+features:
+  # Kinematic features
+  kinematic:
+    enable: true
+    window_size: 10
+    speed_threshold: 0.1
+    acceleration_threshold: 0.5
+    
+  # Geographic features
+  geographic:
+    enable: true
+    distance_threshold: 1000  # meters
+    coastal_distance: 5000   # meters
+    
+  # Temporal features
+  temporal:
+    enable: true
+    time_window: 3600  # seconds
+    night_hours: [22, 6]
+    
+  # Behavioral features
+  behavioral:
+    enable: true
+    maneuver_threshold: 30  # degrees
+    stop_threshold: 0.5     # knots
+
+# TrAISformer Configuration
+traisformer:
+  # Model Architecture
+  d_model: 256
+  nhead: 8
+  num_layers: 6
+  dropout: 0.1
+  max_seq_length: 128
+  
+  # Four-Hot Encoding
+  lat_bins: 100
+  lon_bins: 100
+  speed_bins: 50
+  course_bins: 36
+
+# ML Models Configuration
+ml_models:
+  # XGBoost
+  xgboost:
+    n_estimators: 200
+    max_depth: 6
+    learning_rate: 0.1
+    subsample: 0.8
+    colsample_bytree: 0.8
+    random_state: 42
+    eval_metric: "auc"
+    
+  # LightGBM
+  lightgbm:
+    n_estimators: 200
+    max_depth: 6
+    learning_rate: 0.1
+    subsample: 0.8
+    colsample_bytree: 0.8
+    random_state: 42
+    verbose: -1
+    objective: "binary"
+    metric: "auc"
+    
+  # CatBoost
+  catboost:
+    iterations: 200
+    depth: 6
+    learning_rate: 0.1
+    random_state: 42
+    verbose: false
+    eval_metric: "AUC"
+    
+  # Random Forest
+  random_forest:
+    n_estimators: 200
+    max_depth: 10
+    random_state: 42
+    n_jobs: -1
+    class_weight: "balanced"
+    
+  # Neural Network
+  neural_network:
+    hidden_layer_sizes: [128, 64, 32]
+    activation: "relu"
+    solver: "adam"
+    alpha: 0.001
+    max_iter: 500
+    random_state: 42
+    early_stopping: true
+    validation_fraction: 0.1
+
+# Ensemble Configuration
+ensemble:
+  # Meta-learning
+  meta_learner: "xgboost"
+  use_stacking: true
+  cv_folds: 5
+  
+  # Model weights (if not using meta-learner)
+  model_weights:
+    traisformer: 0.4
+    xgboost: 0.15
+    lightgbm: 0.15
+    catboost: 0.15
+    random_forest: 0.1
+    neural_network: 0.05
+  
+  # Calibration
+  calibration: true
+  calibration_method: "isotonic"  # isotonic, sigmoid
+  
+  # Voting strategy
+  voting: "soft"  # soft, hard
+
+# Training Configuration
+training:
+  # Class imbalance handling
+  class_balance: "SMOTE"  # SMOTE, ADASYN, RandomOverSampler, none
+  
+  # Validation
+  validation_split: 0.2
+  cv_folds: 5
+  
+  # Early stopping
+  early_stopping: true
+  patience: 10
+  
+  # Hyperparameter tuning
+  hyperparameter_tuning: false
+  tuning_trials: 50
+
+# Evaluation Configuration
+evaluation:
+  metrics: ["accuracy", "precision", "recall", "f1_score", "roc_auc", "average_precision"]
+  
+  # Threshold optimization
+  optimize_threshold: true
+  threshold_metric: "f1_score"
+  
+  # Cross-validation
+  cross_validation: true
+  cv_folds: 5
+  
+  # Calibration
+  calibration:
+    method: "isotonic"  # isotonic, sigmoid
+    cv_folds: 3
+
+# Model Interpretation
+interpretation:
+  # Feature importance
+  feature_importance: true
+  
+  # SHAP analysis
+  shap_analysis: true
+  shap_sample_size: 1000
+  
+  # Permutation importance
+  permutation_importance: true
+  
+  # Model explanations
+  explain_predictions: true
+  explanation_sample_size: 100
+
+# Visualization Configuration
+visualization:
+  # Training curves
+  plot_training_curves: true
+  
+  # Model comparison
+  plot_model_comparison: true
+  
+  # Feature importance plots
+  plot_feature_importance: true
+  
+  # Confusion matrices
+  plot_confusion_matrices: true
+  
+  # ROC and PR curves
+  plot_roc_curves: true
+  plot_pr_curves: true
+  
+  # Attention maps (for TrAISformer)
+  plot_attention_maps: true
+
+# Logging Configuration
+logging:
+  level: "INFO"
+  log_dir: "logs/ensemble/"
+  
+# Output Configuration
+output:
+  model_dir: "models/ensemble/"
+  results_dir: "results/ensemble/"
+  visualizations_dir: "visualizations/ensemble/"
+  
+# Hardware Configuration
+hardware:
+  device: "auto"  # auto, cpu, cuda
+  n_jobs: -1
+  
+# Competition Configuration
+competition:
+  generate_submission: true
+  submission_format: "csv"
+  probability_column: "probability" 

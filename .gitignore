@@ -122,31 +122,100 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
-# Project specific
-data/
-models/*.pkl
-models/*.pth
-models/*.joblib
-logs/
-results/
-submissions/
-wandb/
-.wandb/
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# Linux
+*~
 
 # IDE
 .vscode/
 .idea/
 *.swp
 *.swo
+*~
 
-# OS
-.DS_Store
-Thumbs.db
+# Project specific
+# Data directories
+data/
+train_data/
+test_data/
+competition_data/
+raw_data/
+
+# Output directories
+outputs/
+results/
+visualizations/
+logs/
+
+# Model files
+models/
+*.pkl
+*.joblib
+*.h5
+*.pt
+*.pth
+*.onnx
+
+# Experiment tracking
+wandb/
+mlruns/
+.neptune/
 
 # Temporary files
+tmp/
+temp/
 *.tmp
-*.temp 
 
-# Catboost
+# Large files
+*.zip
+*.tar.gz
+*.rar
+
+# Jupyter notebook checkpoints
+.ipynb_checkpoints/
+
+# CatBoost info
 catboost_info/
-venv/
+
+# MLflow
+mlruns/
+
+# Weights & Biases
+wandb/
+
+# TensorBoard
+runs/
+
+# Optuna
+optuna.db
+
+# Configuration overrides (keep templates)
+config/*_local.yaml
+config/*_override.yaml
+
+# Secrets
+.env
+.env.local
+.env.*.local
+secrets.yaml
+credentials.json
+
+# Cache
+.cache/
+*.cache

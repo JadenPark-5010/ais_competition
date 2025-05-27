@@ -1,0 +1,100 @@
+# TrAISformer Configuration for Maritime Anomaly Detection
+
+# Data Configuration
+data:
+  batch_size: 32
+  num_workers: 4
+  validation_split: 0.2
+  test_split: 0.15
+  shuffle: true
+  
+# TrAISformer Model Configuration
+traisformer:
+  # Model Architecture
+  d_model: 256
+  nhead: 8
+  num_layers: 6
+  dim_feedforward: 1024
+  dropout: 0.1
+  max_seq_length: 128
+  num_classes: 2
+  
+  # Four-Hot Encoding
+  lat_bins: 100
+  lon_bins: 100
+  speed_bins: 50
+  course_bins: 36
+  
+  # Model Initialization
+  init_weights: true
+  
+# Training Configuration
+training:
+  epochs: 100
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  patience: 15
+  min_delta: 0.001
+  
+  # Optimizer
+  optimizer: "adam"  # adam, adamw
+  
+  # Scheduler
+  scheduler: "cosine"  # cosine, step, none
+  
+  # Loss Function
+  loss_function: "cross_entropy"  # cross_entropy, focal
+  class_weights: [1.0, 2.0]  # [normal, anomaly]
+  
+  # Batch Size
+  batch_size: 32
+  
+  # Gradient Clipping
+  max_grad_norm: 1.0
+  
+# Validation Configuration
+validation:
+  metrics: ["accuracy", "precision", "recall", "f1", "auc"]
+  
+# Data Preprocessing
+preprocessing:
+  normalize_coordinates: true
+  handle_missing: "interpolate"  # drop, interpolate, forward_fill
+  outlier_detection: true
+  outlier_threshold: 3.0
+  min_trajectory_length: 10
+  max_trajectory_length: 512
+  
+# Attention Visualization
+attention:
+  visualize: true
+  num_heads_to_plot: 4
+  save_attention_maps: true
+  
+# Logging and Monitoring
+logging:
+  level: "INFO"
+  log_dir: "logs/traisformer/"
+  
+# Weights & Biases Integration
+use_wandb: false
+wandb_project: "traisformer-maritime-anomaly"
+experiment_name: "traisformer-baseline"
+
+# Model Checkpointing
+checkpointing:
+  save_best: true
+  save_last: true
+  monitor: "val_auc"
+  mode: "max"
+  
+# Hardware Configuration
+hardware:
+  device: "auto"  # auto, cpu, cuda
+  mixed_precision: false
+  
+# Inference Configuration
+inference:
+  batch_size: 64
+  return_attention: false
+  threshold: 0.5 

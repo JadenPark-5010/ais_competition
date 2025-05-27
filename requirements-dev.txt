@@ -1,0 +1,44 @@
+# Development dependencies for Maritime Anomaly Detection
+
+# Code formatting and linting
+black>=22.0.0
+isort>=5.10.0
+flake8>=4.0.0
+mypy>=0.950
+
+# Testing
+pytest>=7.1.0
+pytest-cov>=3.0.0
+pytest-mock>=3.7.0
+pytest-xdist>=2.5.0
+
+# Documentation
+sphinx>=4.5.0
+sphinx-rtd-theme>=1.0.0
+myst-parser>=0.17.0
+
+# Jupyter development
+jupyter>=1.0.0
+jupyterlab>=3.4.0
+ipykernel>=6.15.0
+nbconvert>=6.5.0
+
+# Pre-commit hooks
+pre-commit>=2.19.0
+
+# Performance profiling
+line-profiler>=3.5.0
+memory-profiler>=0.60.0
+
+# Development utilities
+python-dotenv>=0.20.0
+rich>=12.4.0
+typer>=0.6.0
+
+# API development (if needed)
+fastapi>=0.78.0
+uvicorn>=0.18.0
+
+# Database (if needed)
+sqlalchemy>=1.4.0
+alembic>=1.8.0 
