@@ -9,8 +9,8 @@ with open("requirements.txt", "r", encoding="utf-8") as fh:
 setup(
     name="maritime-anomaly-detection",
     version="0.1.0",
-    author="Maritime AI Team",
-    author_email="team@maritime-ai.com",
+    author="Marine Corps",
+    author_email="jaden@korea.kr",
     description="AIS 기반 해상 이상 탐지 시스템",
     long_description=long_description,
     long_description_content_type="text/markdown",

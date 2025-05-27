@@ -1,677 +1,506 @@
 """
-Ensemble anomaly detection models for maritime data.
-
-This module implements ensemble approaches that combine multiple base models
-for robust and accurate anomaly detection.
+북한 의심 선박 탐지를 위한 앙상블 모델
+여러 머신러닝 모델을 조합하여 높은 성능과 신뢰도를 달성
 """
 
-import numpy as np
 import pandas as pd
-from typing import Dict, Any, Optional, List, Tuple, Union
-import logging
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.linear_model import LogisticRegression
-from sklearn.model_selection import cross_val_score, StratifiedKFold
+import numpy as np
+from typing import Dict, List, Tuple, Optional, Any
+import joblib
+import warnings
+warnings.filterwarnings('ignore')
+
+# 머신러닝 모델들
+from sklearn.ensemble import RandomForestClassifier, VotingClassifier
+from sklearn.model_selection import StratifiedKFold, cross_val_score, GridSearchCV
+from sklearn.metrics import classification_report, confusion_matrix, roc_auc_score, average_precision_score
+from sklearn.calibration import CalibratedClassifierCV
 from sklearn.preprocessing import StandardScaler
+from sklearn.utils.class_weight import compute_class_weight
+
+# 불균형 데이터 처리
+from imblearn.over_sampling import SMOTE, ADASYN, RandomOverSampler
+from imblearn.pipeline import Pipeline as ImbPipeline
+
+# 개별 모델들
 import xgboost as xgb
+import lightgbm as lgb
+from catboost import CatBoostClassifier
+from sklearn.neural_network import MLPClassifier
 
-from .base_model import EnsembleAnomalyDetector, BaseAnomalyDetector
-from .traisformer import TrAISformerAnomalyDetector
-from .clustering_model import CombinedClusteringAnomalyDetector, StatisticalAnomalyDetector
+# 모델 해석
+import shap
+from sklearn.inspection import permutation_importance
 
-logger = logging.getLogger(__name__)
-
-
-class WeightedEnsembleAnomalyDetector(EnsembleAnomalyDetector):
-    """
-    Weighted ensemble anomaly detector.
+class SuspiciousVesselEnsemble:
+    """북한 의심 선박 탐지 앙상블 모델"""
     
-    Combines predictions from multiple base models using weighted averaging.
-    """
-    
-    def __init__(self, base_models: List[BaseAnomalyDetector] = None, config: Dict[str, Any] = None):
+    def __init__(self, config: Dict):
         """
-        Initialize weighted ensemble.
-        
         Args:
-            base_models: List of base anomaly detection models
-            config: Configuration dictionary
+            config: 모델 설정 딕셔너리
         """
-        super().__init__(base_models, config)
-        
-        # Ensemble configuration
-        ensemble_config = self.config.get('models', {}).get('ensemble', {})
-        
-        # Default weights if not provided
-        if self.weights is None:
-            default_weights = ensemble_config.get('weights', [])
-            if default_weights and len(default_weights) == len(self.base_models):
-                self.weights = default_weights
-            else:
-                # Equal weights
-                self.weights = [1.0 / len(self.base_models)] * len(self.base_models)
-        
-        # Normalize weights
-        if self.weights:
-            weight_sum = sum(self.weights)
-            self.weights = [w / weight_sum for w in self.weights]
-        
-        logger.info(f"Weighted Ensemble initialized with {len(self.base_models)} models")
-    
-    def fit(self, X: np.ndarray, y: Optional[np.ndarray] = None) -> 'WeightedEnsembleAnomalyDetector':
-        """
-        Fit all base models.
-        
-        Args:
-            X: Training features
-            y: Training labels (optional)
-            
-        Returns:
-            Self for method chaining
-        """
-        X = self.validate_input(X)
-        
-        logger.info("Fitting weighted ensemble models")
-        
-        # Fit each base model
-        for i, model in enumerate(self.base_models):
-            logger.info(f"Fitting base model {i + 1}/{len(self.base_models)}: {model.model_name}")
-            try:
-                model.fit(X, y)
-            except Exception as e:
-                logger.error(f"Failed to fit model {model.model_name}: {e}")
-                # Set weight to 0 for failed models
-                self.weights[i] = 0
-        
-        # Renormalize weights after removing failed models
-        weight_sum = sum(self.weights)
-        if weight_sum > 0:
-            self.weights = [w / weight_sum for w in self.weights]
-        else:
-            raise ValueError("All base models failed to fit")
-        
-        self.is_fitted = True
-        logger.info("Weighted ensemble training completed")
-        
-        return self
-    
-    def predict(self, X: np.ndarray) -> np.ndarray:
-        """
-        Predict anomalies using weighted ensemble.
-        
-        Args:
-            X: Input features
-            
-        Returns:
-            Binary predictions
-        """
-        scores = self.predict_proba(X)
-        return (scores > 0.5).astype(int)
-    
-    def predict_proba(self, X: np.ndarray) -> np.ndarray:
-        """
-        Predict anomaly scores using weighted ensemble.
-        
-        Args:
-            X: Input features
-            
-        Returns:
-            Weighted ensemble scores
-        """
-        if not self.is_fitted:
-            raise ValueError("Ensemble must be fitted before prediction")
-        
-        X = self.validate_input(X)
-        
-        # Get predictions from all base models
-        all_scores = []
-        valid_weights = []
-        
-        for i, model in enumerate(self.base_models):
-            if self.weights[i] > 0:  # Only use models with positive weights
-                try:
-                    scores = model.predict_proba(X)
-                    
-                    # Handle different output formats
-                    if scores.ndim == 2 and scores.shape[1] == 2:
-                        # Binary classification probabilities
-                        scores = scores[:, 1]  # Use anomaly class probability
-                    elif scores.ndim == 2 and scores.shape[1] == 1:
-                        scores = scores.flatten()
-                    
-                    all_scores.append(scores)
-                    valid_weights.append(self.weights[i])
-                    
-                except Exception as e:
-                    logger.warning(f"Failed to get predictions from {model.model_name}: {e}")
-                    continue
-        
-        if not all_scores:
-            raise ValueError("No valid predictions from base models")
-        
-        # Weighted average
-        all_scores = np.array(all_scores)
-        valid_weights = np.array(valid_weights)
-        
-        # Normalize weights
-        valid_weights = valid_weights / valid_weights.sum()
-        
-        # Calculate weighted average
-        ensemble_scores = np.average(all_scores, axis=0, weights=valid_weights)
-        
-        return ensemble_scores
-
-
-class StackingEnsembleAnomalyDetector(EnsembleAnomalyDetector):
-    """
-    Stacking ensemble anomaly detector.
-    
-    Uses a meta-learner to combine predictions from base models.
-    """
-    
-    def __init__(self, base_models: List[BaseAnomalyDetector] = None, config: Dict[str, Any] = None):
-        """
-        Initialize stacking ensemble.
-        
-        Args:
-            base_models: List of base anomaly detection models
-            config: Configuration dictionary
-        """
-        super().__init__(base_models, config)
-        
-        # Meta-learner configuration
-        ensemble_config = self.config.get('models', {}).get('ensemble', {})
-        meta_config = ensemble_config.get('meta_learner', {})
-        
-        self.meta_learner_type = meta_config.get('type', 'xgboost')
-        self.cv_folds = ensemble_config.get('strategy', {}).get('cross_validation_folds', 5)
-        
-        # Initialize meta-learner
-        self.meta_model = self._create_meta_learner(meta_config)
+        self.config = config
+        self.models = {}
+        self.ensemble_model = None
         self.scaler = StandardScaler()
+        self.feature_names = None
+        self.is_fitted = False
         
-        logger.info(f"Stacking Ensemble initialized with {self.meta_learner_type} meta-learner")
-    
-    def _create_meta_learner(self, meta_config: Dict[str, Any]):
-        """Create meta-learner model based on configuration."""
-        if self.meta_learner_type == 'xgboost':
-            xgb_config = meta_config.get('xgboost', {})
-            return xgb.XGBClassifier(
-                n_estimators=xgb_config.get('n_estimators', 100),
-                max_depth=xgb_config.get('max_depth', 6),
-                learning_rate=xgb_config.get('learning_rate', 0.1),
-                subsample=xgb_config.get('subsample', 0.8),
-                colsample_bytree=xgb_config.get('colsample_bytree', 0.8),
-                random_state=xgb_config.get('random_state', 42),
-                eval_metric='logloss'
-            )
+        # 개별 모델 초기화
+        self._initialize_models()
         
-        elif self.meta_learner_type == 'random_forest':
-            rf_config = meta_config.get('random_forest', {})
-            return RandomForestClassifier(
-                n_estimators=rf_config.get('n_estimators', 100),
-                max_depth=rf_config.get('max_depth', 10),
-                min_samples_split=rf_config.get('min_samples_split', 2),
-                min_samples_leaf=rf_config.get('min_samples_leaf', 1),
-                random_state=rf_config.get('random_state', 42)
-            )
+    def _initialize_models(self):
+        """개별 모델들 초기화"""
+        model_configs = self.config['models']['ensemble']
         
-        elif self.meta_learner_type == 'logistic_regression':
-            lr_config = meta_config.get('logistic_regression', {})
-            return LogisticRegression(
-                C=lr_config.get('C', 1.0),
-                penalty=lr_config.get('penalty', 'l2'),
-                solver=lr_config.get('solver', 'liblinear'),
-                random_state=lr_config.get('random_state', 42),
-                max_iter=1000
-            )
-        
-        else:
-            raise ValueError(f"Unknown meta-learner type: {self.meta_learner_type}")
-    
-    def fit(self, X: np.ndarray, y: np.ndarray) -> 'StackingEnsembleAnomalyDetector':
-        """
-        Fit stacking ensemble with cross-validation.
-        
-        Args:
-            X: Training features
-            y: Training labels
+        for model_config in model_configs:
+            model_name = model_config['name']
+            model_type = model_config['type']
+            params = model_config['params']
             
-        Returns:
-            Self for method chaining
-        """
-        X = self.validate_input(X)
+            if model_type == 'XGBClassifier':
+                self.models[model_name] = xgb.XGBClassifier(**params)
+            elif model_type == 'LGBMClassifier':
+                self.models[model_name] = lgb.LGBMClassifier(**params)
+            elif model_type == 'CatBoostClassifier':
+                self.models[model_name] = CatBoostClassifier(**params)
+            elif model_type == 'RandomForestClassifier':
+                self.models[model_name] = RandomForestClassifier(**params)
+            elif model_type == 'MLPClassifier':
+                self.models[model_name] = MLPClassifier(**params)
+            else:
+                raise ValueError(f"지원하지 않는 모델 타입: {model_type}")
         
-        if y is None:
-            raise ValueError("Stacking ensemble requires labels for training")
+        print(f"초기화된 모델: {list(self.models.keys())}")
+    
+    def prepare_data(self, df: pd.DataFrame, target_col: str = 'is_suspicious') -> Tuple[np.ndarray, np.ndarray]:
+        """데이터 전처리 및 준비"""
+        # 피처와 타겟 분리
+        feature_cols = [col for col in df.columns if col not in ['vessel_id', target_col, 'confidence']]
         
-        logger.info("Fitting stacking ensemble with cross-validation")
+        X = df[feature_cols].copy()
+        y = df[target_col].copy()
         
-        # Generate meta-features using cross-validation
-        meta_features = self._generate_meta_features(X, y)
+        # 결측값 처리
+        X = X.fillna(X.median())
         
-        # Fit meta-learner
-        meta_features_scaled = self.scaler.fit_transform(meta_features)
-        self.meta_model.fit(meta_features_scaled, y)
+        # 피처명 저장
+        self.feature_names = feature_cols
         
-        # Fit all base models on full data
-        for i, model in enumerate(self.base_models):
-            logger.info(f"Fitting base model {i + 1}/{len(self.base_models)}: {model.model_name}")
-            try:
-                model.fit(X, y)
-            except Exception as e:
-                logger.error(f"Failed to fit model {model.model_name}: {e}")
+        return X.values, y.values
+    
+    def handle_class_imbalance(self, X: np.ndarray, y: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        """클래스 불균형 처리"""
+        balance_config = self.config['training']['class_balance']
+        method = balance_config['method']
+        sampling_strategy = balance_config['sampling_strategy']
+        
+        print(f"클래스 불균형 처리: {method}")
+        print(f"원본 클래스 분포: {np.bincount(y)}")
+        
+        if method == 'SMOTE':
+            sampler = SMOTE(sampling_strategy=sampling_strategy, random_state=42)
+        elif method == 'ADASYN':
+            sampler = ADASYN(sampling_strategy=sampling_strategy, random_state=42)
+        elif method == 'RandomOverSampler':
+            sampler = RandomOverSampler(sampling_strategy=sampling_strategy, random_state=42)
+        else:
+            print("클래스 불균형 처리 없음")
+            return X, y
+        
+        X_resampled, y_resampled = sampler.fit_resample(X, y)
+        print(f"리샘플링 후 클래스 분포: {np.bincount(y_resampled)}")
+        
+        return X_resampled, y_resampled
+    
+    def train_individual_models(self, X: np.ndarray, y: np.ndarray) -> Dict[str, Any]:
+        """개별 모델 훈련"""
+        print("개별 모델 훈련 시작...")
+        
+        # 데이터 정규화
+        X_scaled = self.scaler.fit_transform(X)
+        
+        # 교차 검증 설정
+        cv_folds = self.config['training']['cv_folds']
+        cv = StratifiedKFold(n_splits=cv_folds, shuffle=True, random_state=42)
+        
+        model_scores = {}
+        
+        for model_name, model in self.models.items():
+            print(f"\n{model_name} 훈련 중...")
+            
+            # 모델별로 스케일링 필요 여부 결정
+            if model_name in ['neural_network']:
+                X_train = X_scaled
+            else:
+                X_train = X
+            
+            # 교차 검증
+            cv_scores = cross_val_score(model, X_train, y, cv=cv, scoring='roc_auc', n_jobs=-1)
+            
+            print(f"{model_name} CV AUC: {cv_scores.mean():.4f} (+/- {cv_scores.std() * 2:.4f})")
+            
+            # 전체 데이터로 훈련
+            model.fit(X_train, y)
+            
+            model_scores[model_name] = {
+                'cv_mean': cv_scores.mean(),
+                'cv_std': cv_scores.std(),
+                'model': model
+            }
+        
+        return model_scores
+    
+    def create_ensemble(self, model_scores: Dict[str, Any], X: np.ndarray, y: np.ndarray):
+        """앙상블 모델 생성"""
+        print("\n앙상블 모델 생성 중...")
+        
+        # 성능 기반으로 모델 선택 (상위 모델들만 사용)
+        sorted_models = sorted(model_scores.items(), key=lambda x: x[1]['cv_mean'], reverse=True)
+        top_models = sorted_models[:4]  # 상위 4개 모델 사용
+        
+        print("앙상블에 포함된 모델:")
+        for model_name, scores in top_models:
+            print(f"  {model_name}: {scores['cv_mean']:.4f}")
+        
+        # VotingClassifier 생성
+        estimators = []
+        for model_name, scores in top_models:
+            model = scores['model']
+            
+            # 신뢰도 보정 적용
+            calibrated_model = CalibratedClassifierCV(
+                model, 
+                method=self.config['evaluation']['calibration']['method'],
+                cv=self.config['evaluation']['calibration']['cv_folds']
+            )
+            
+            estimators.append((model_name, calibrated_model))
+        
+        # 소프트 보팅 앙상블
+        self.ensemble_model = VotingClassifier(
+            estimators=estimators,
+            voting='soft',
+            n_jobs=-1
+        )
+        
+        # 앙상블 훈련
+        X_scaled = self.scaler.transform(X)
+        self.ensemble_model.fit(X_scaled, y)
         
         self.is_fitted = True
-        logger.info("Stacking ensemble training completed")
-        
-        return self
+        print("앙상블 모델 훈련 완료")
     
-    def _generate_meta_features(self, X: np.ndarray, y: np.ndarray) -> np.ndarray:
-        """
-        Generate meta-features using cross-validation.
+    def fit(self, df: pd.DataFrame, target_col: str = 'is_suspicious') -> Dict[str, Any]:
+        """전체 훈련 파이프라인"""
+        print("=== 북한 의심 선박 탐지 모델 훈련 시작 ===")
         
-        Args:
-            X: Training features
-            y: Training labels
-            
-        Returns:
-            Meta-features array
-        """
-        n_samples = len(X)
-        n_models = len(self.base_models)
-        meta_features = np.zeros((n_samples, n_models))
+        # 데이터 준비
+        X, y = self.prepare_data(df, target_col)
         
-        # Cross-validation
-        cv = StratifiedKFold(n_splits=self.cv_folds, shuffle=True, random_state=42)
+        # 클래스 불균형 처리
+        X_balanced, y_balanced = self.handle_class_imbalance(X, y)
         
-        for fold, (train_idx, val_idx) in enumerate(cv.split(X, y)):
-            logger.info(f"Processing fold {fold + 1}/{self.cv_folds}")
-            
-            X_train, X_val = X[train_idx], X[val_idx]
-            y_train = y[train_idx]
-            
-            for i, model in enumerate(self.base_models):
-                try:
-                    # Create a copy of the model for this fold
-                    model_copy = type(model)(model.config)
-                    
-                    # Fit on training fold
-                    model_copy.fit(X_train, y_train)
-                    
-                    # Predict on validation fold
-                    val_scores = model_copy.predict_proba(X_val)
-                    
-                    # Handle different output formats
-                    if val_scores.ndim == 2 and val_scores.shape[1] == 2:
-                        val_scores = val_scores[:, 1]
-                    elif val_scores.ndim == 2 and val_scores.shape[1] == 1:
-                        val_scores = val_scores.flatten()
-                    
-                    meta_features[val_idx, i] = val_scores
-                    
-                except Exception as e:
-                    logger.warning(f"Failed to generate meta-features for {model.model_name} in fold {fold}: {e}")
-                    # Use default scores for failed models
-                    meta_features[val_idx, i] = 0.5
+        # 개별 모델 훈련
+        model_scores = self.train_individual_models(X_balanced, y_balanced)
         
-        return meta_features
+        # 앙상블 생성
+        self.create_ensemble(model_scores, X_balanced, y_balanced)
+        
+        # 훈련 결과 반환
+        return {
+            'model_scores': model_scores,
+            'feature_names': self.feature_names,
+            'training_samples': len(X_balanced),
+            'class_distribution': np.bincount(y_balanced)
+        }
     
-    def predict(self, X: np.ndarray) -> np.ndarray:
-        """
-        Predict anomalies using stacking ensemble.
-        
-        Args:
-            X: Input features
-            
-        Returns:
-            Binary predictions
-        """
-        probabilities = self.predict_proba(X)
-        return (probabilities[:, 1] > 0.5).astype(int)
-    
-    def predict_proba(self, X: np.ndarray) -> np.ndarray:
-        """
-        Predict class probabilities using stacking ensemble.
-        
-        Args:
-            X: Input features
-            
-        Returns:
-            Class probabilities
-        """
+    def predict(self, df: pd.DataFrame) -> np.ndarray:
+        """예측 수행"""
         if not self.is_fitted:
-            raise ValueError("Ensemble must be fitted before prediction")
+            raise ValueError("모델이 훈련되지 않았습니다. fit() 메서드를 먼저 호출하세요.")
         
-        X = self.validate_input(X)
+        # 피처 준비
+        feature_cols = [col for col in df.columns if col not in ['vessel_id', 'is_suspicious', 'confidence']]
+        X = df[feature_cols].fillna(df[feature_cols].median()).values
         
-        # Get base model predictions
-        base_predictions = self.get_base_predictions(X)
+        # 정규화
+        X_scaled = self.scaler.transform(X)
         
-        # Scale meta-features
-        base_predictions_scaled = self.scaler.transform(base_predictions)
+        # 예측
+        predictions = self.ensemble_model.predict(X_scaled)
         
-        # Meta-learner prediction
-        probabilities = self.meta_model.predict_proba(base_predictions_scaled)
+        return predictions
+    
+    def predict_proba(self, df: pd.DataFrame) -> np.ndarray:
+        """확률 예측"""
+        if not self.is_fitted:
+            raise ValueError("모델이 훈련되지 않았습니다. fit() 메서드를 먼저 호출하세요.")
+        
+        # 피처 준비
+        feature_cols = [col for col in df.columns if col not in ['vessel_id', 'is_suspicious', 'confidence']]
+        X = df[feature_cols].fillna(df[feature_cols].median()).values
+        
+        # 정규화
+        X_scaled = self.scaler.transform(X)
+        
+        # 확률 예측
+        probabilities = self.ensemble_model.predict_proba(X_scaled)
         
         return probabilities
-
-
-class VotingEnsembleAnomalyDetector(EnsembleAnomalyDetector):
-    """
-    Voting ensemble anomaly detector.
     
-    Combines predictions using majority voting (hard voting) or 
-    average probabilities (soft voting).
-    """
-    
-    def __init__(self, base_models: List[BaseAnomalyDetector] = None, 
-                 config: Dict[str, Any] = None, voting: str = 'soft'):
-        """
-        Initialize voting ensemble.
-        
-        Args:
-            base_models: List of base anomaly detection models
-            config: Configuration dictionary
-            voting: Voting strategy ('hard' or 'soft')
-        """
-        super().__init__(base_models, config)
-        
-        self.voting = voting
-        
-        logger.info(f"Voting Ensemble initialized with {voting} voting")
-    
-    def fit(self, X: np.ndarray, y: Optional[np.ndarray] = None) -> 'VotingEnsembleAnomalyDetector':
-        """
-        Fit all base models.
-        
-        Args:
-            X: Training features
-            y: Training labels (optional)
-            
-        Returns:
-            Self for method chaining
-        """
-        X = self.validate_input(X)
-        
-        logger.info("Fitting voting ensemble models")
-        
-        # Fit each base model
-        for i, model in enumerate(self.base_models):
-            logger.info(f"Fitting base model {i + 1}/{len(self.base_models)}: {model.model_name}")
-            try:
-                model.fit(X, y)
-            except Exception as e:
-                logger.error(f"Failed to fit model {model.model_name}: {e}")
-        
-        self.is_fitted = True
-        logger.info("Voting ensemble training completed")
-        
-        return self
-    
-    def predict(self, X: np.ndarray) -> np.ndarray:
-        """
-        Predict anomalies using voting ensemble.
-        
-        Args:
-            X: Input features
-            
-        Returns:
-            Binary predictions
-        """
+    def evaluate(self, df: pd.DataFrame, target_col: str = 'is_suspicious') -> Dict[str, Any]:
+        """모델 평가"""
         if not self.is_fitted:
-            raise ValueError("Ensemble must be fitted before prediction")
+            raise ValueError("모델이 훈련되지 않았습니다.")
         
-        X = self.validate_input(X)
+        # 예측
+        y_true = df[target_col].values
+        y_pred = self.predict(df)
+        y_proba = self.predict_proba(df)[:, 1]  # 양성 클래스 확률
         
-        if self.voting == 'hard':
-            # Hard voting: majority vote
-            all_predictions = []
-            
-            for model in self.base_models:
-                try:
-                    predictions = model.predict(X)
-                    all_predictions.append(predictions)
-                except Exception as e:
-                    logger.warning(f"Failed to get predictions from {model.model_name}: {e}")
-                    continue
-            
-            if not all_predictions:
-                raise ValueError("No valid predictions from base models")
-            
-            all_predictions = np.array(all_predictions)
-            # Majority vote
-            ensemble_predictions = (all_predictions.mean(axis=0) > 0.5).astype(int)
-            
-            return ensemble_predictions
+        # 평가 지표 계산
+        from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
         
-        else:  # soft voting
-            scores = self.predict_proba(X)
-            return (scores > 0.5).astype(int)
+        metrics = {
+            'accuracy': accuracy_score(y_true, y_pred),
+            'precision': precision_score(y_true, y_pred),
+            'recall': recall_score(y_true, y_pred),
+            'f1_score': f1_score(y_true, y_pred),
+            'roc_auc': roc_auc_score(y_true, y_proba),
+            'average_precision': average_precision_score(y_true, y_proba)
+        }
+        
+        # 분류 리포트
+        classification_rep = classification_report(y_true, y_pred, output_dict=True)
+        
+        # 혼동 행렬
+        conf_matrix = confusion_matrix(y_true, y_pred)
+        
+        return {
+            'metrics': metrics,
+            'classification_report': classification_rep,
+            'confusion_matrix': conf_matrix,
+            'predictions': y_pred,
+            'probabilities': y_proba
+        }
     
-    def predict_proba(self, X: np.ndarray) -> np.ndarray:
-        """
-        Predict anomaly scores using soft voting.
-        
-        Args:
-            X: Input features
-            
-        Returns:
-            Average anomaly scores
-        """
+    def get_feature_importance(self) -> Dict[str, float]:
+        """피처 중요도 분석"""
         if not self.is_fitted:
-            raise ValueError("Ensemble must be fitted before prediction")
+            raise ValueError("모델이 훈련되지 않았습니다.")
         
-        X = self.validate_input(X)
+        # 앙상블의 각 모델에서 피처 중요도 추출
+        feature_importance = {}
         
-        all_scores = []
-        
-        for model in self.base_models:
+        for name, estimator in self.ensemble_model.named_estimators_.items():
+            # CalibratedClassifierCV에서 base_estimator 추출 (sklearn 버전 호환성)
             try:
-                scores = model.predict_proba(X)
-                
-                # Handle different output formats
-                if scores.ndim == 2 and scores.shape[1] == 2:
-                    scores = scores[:, 1]
-                elif scores.ndim == 2 and scores.shape[1] == 1:
-                    scores = scores.flatten()
-                
-                all_scores.append(scores)
-                
-            except Exception as e:
-                logger.warning(f"Failed to get predictions from {model.model_name}: {e}")
-                continue
-        
-        if not all_scores:
-            raise ValueError("No valid predictions from base models")
-        
-        # Average scores
-        all_scores = np.array(all_scores)
-        ensemble_scores = all_scores.mean(axis=0)
-        
-        return ensemble_scores
-
-
-class AdaptiveEnsembleAnomalyDetector(EnsembleAnomalyDetector):
-    """
-    Adaptive ensemble that dynamically adjusts model weights based on performance.
-    """
-    
-    def __init__(self, base_models: List[BaseAnomalyDetector] = None, config: Dict[str, Any] = None):
-        """
-        Initialize adaptive ensemble.
-        
-        Args:
-            base_models: List of base anomaly detection models
-            config: Configuration dictionary
-        """
-        super().__init__(base_models, config)
-        
-        self.performance_history = []
-        self.adaptive_weights = None
-        
-        logger.info("Adaptive Ensemble initialized")
-    
-    def fit(self, X: np.ndarray, y: np.ndarray) -> 'AdaptiveEnsembleAnomalyDetector':
-        """
-        Fit adaptive ensemble with performance-based weighting.
-        
-        Args:
-            X: Training features
-            y: Training labels
+                if hasattr(estimator, 'calibrated_classifiers_'):
+                    # sklearn 1.0+ 버전
+                    if hasattr(estimator.calibrated_classifiers_[0], 'estimator'):
+                        base_estimator = estimator.calibrated_classifiers_[0].estimator
+                    else:
+                        base_estimator = estimator.calibrated_classifiers_[0].base_estimator
+                else:
+                    base_estimator = estimator
+            except:
+                # 직접 모델에서 중요도 추출 시도
+                base_estimator = estimator
             
-        Returns:
-            Self for method chaining
-        """
-        X = self.validate_input(X)
+            if hasattr(base_estimator, 'feature_importances_'):
+                importance = base_estimator.feature_importances_
+                for i, feature_name in enumerate(self.feature_names):
+                    if feature_name not in feature_importance:
+                        feature_importance[feature_name] = []
+                    feature_importance[feature_name].append(importance[i])
         
-        if y is None:
-            raise ValueError("Adaptive ensemble requires labels for training")
+        # 평균 중요도 계산
+        avg_importance = {}
+        for feature_name, importances in feature_importance.items():
+            avg_importance[feature_name] = np.mean(importances)
         
-        logger.info("Fitting adaptive ensemble")
+        # 정규화
+        total_importance = sum(avg_importance.values())
+        if total_importance > 0:
+            for feature_name in avg_importance:
+                avg_importance[feature_name] /= total_importance
         
-        # Evaluate each model using cross-validation
-        model_scores = []
+        return avg_importance
+    
+    def explain_predictions(self, df: pd.DataFrame, sample_size: int = 100) -> Dict[str, Any]:
+        """SHAP을 사용한 예측 설명"""
+        if not self.is_fitted:
+            raise ValueError("모델이 훈련되지 않았습니다.")
         
-        for i, model in enumerate(self.base_models):
-            logger.info(f"Evaluating model {i + 1}/{len(self.base_models)}: {model.model_name}")
+        # 샘플 데이터 준비
+        sample_df = df.sample(min(sample_size, len(df)), random_state=42)
+        feature_cols = [col for col in sample_df.columns if col not in ['vessel_id', 'is_suspicious', 'confidence']]
+        X_sample = sample_df[feature_cols].fillna(sample_df[feature_cols].median()).values
+        X_sample_scaled = self.scaler.transform(X_sample)
+        
+        try:
+            # SHAP Explainer 생성 (TreeExplainer 시도)
+            explainer = shap.TreeExplainer(self.ensemble_model.estimators_[0])
+            shap_values = explainer.shap_values(X_sample_scaled)
             
+            return {
+                'shap_values': shap_values,
+                'feature_names': self.feature_names,
+                'sample_data': X_sample,
+                'explainer_type': 'tree'
+            }
+        except:
             try:
-                # Cross-validation score
-                cv_scores = cross_val_score(
-                    model, X, y, cv=5, scoring='f1', 
-                    error_score='raise'
+                # KernelExplainer 사용
+                explainer = shap.KernelExplainer(
+                    self.ensemble_model.predict_proba, 
+                    X_sample_scaled[:10]  # 배경 데이터
                 )
-                avg_score = cv_scores.mean()
-                model_scores.append(avg_score)
+                shap_values = explainer.shap_values(X_sample_scaled[:20])  # 설명할 샘플
                 
-                logger.info(f"{model.model_name} CV F1 Score: {avg_score:.4f}")
-                
+                return {
+                    'shap_values': shap_values,
+                    'feature_names': self.feature_names,
+                    'sample_data': X_sample[:20],
+                    'explainer_type': 'kernel'
+                }
             except Exception as e:
-                logger.warning(f"Failed to evaluate {model.model_name}: {e}")
-                model_scores.append(0.0)
-        
-        # Calculate adaptive weights based on performance
-        model_scores = np.array(model_scores)
-        
-        # Softmax weighting
-        exp_scores = np.exp(model_scores - model_scores.max())
-        self.adaptive_weights = exp_scores / exp_scores.sum()
-        
-        logger.info(f"Adaptive weights: {dict(zip([m.model_name for m in self.base_models], self.adaptive_weights))}")
-        
-        # Fit all models on full data
-        for model in self.base_models:
-            try:
-                model.fit(X, y)
-            except Exception as e:
-                logger.error(f"Failed to fit {model.model_name}: {e}")
-        
-        self.is_fitted = True
-        logger.info("Adaptive ensemble training completed")
-        
-        return self
+                print(f"SHAP 분석 실패: {e}")
+                return None
     
-    def predict(self, X: np.ndarray) -> np.ndarray:
-        """
-        Predict using adaptive weights.
+    def hyperparameter_tuning(self, df: pd.DataFrame, target_col: str = 'is_suspicious') -> Dict[str, Any]:
+        """하이퍼파라미터 튜닝"""
+        print("하이퍼파라미터 튜닝 시작...")
         
-        Args:
-            X: Input features
+        X, y = self.prepare_data(df, target_col)
+        X_balanced, y_balanced = self.handle_class_imbalance(X, y)
+        
+        # 주요 모델들에 대해 그리드 서치 수행
+        tuning_results = {}
+        
+        # XGBoost 튜닝
+        if 'xgboost' in self.models:
+            print("XGBoost 하이퍼파라미터 튜닝...")
+            xgb_params = {
+                'n_estimators': [500, 1000],
+                'max_depth': [6, 8, 10],
+                'learning_rate': [0.05, 0.1, 0.15],
+                'subsample': [0.8, 0.9]
+            }
             
-        Returns:
-            Binary predictions
-        """
-        scores = self.predict_proba(X)
-        return (scores > 0.5).astype(int)
+            xgb_grid = GridSearchCV(
+                xgb.XGBClassifier(random_state=42),
+                xgb_params,
+                cv=3,
+                scoring='roc_auc',
+                n_jobs=-1,
+                verbose=1
+            )
+            
+            xgb_grid.fit(X_balanced, y_balanced)
+            tuning_results['xgboost'] = {
+                'best_params': xgb_grid.best_params_,
+                'best_score': xgb_grid.best_score_
+            }
+        
+        # LightGBM 튜닝
+        if 'lightgbm' in self.models:
+            print("LightGBM 하이퍼파라미터 튜닝...")
+            lgb_params = {
+                'n_estimators': [500, 1000],
+                'max_depth': [6, 8, 10],
+                'learning_rate': [0.05, 0.1, 0.15],
+                'subsample': [0.8, 0.9]
+            }
+            
+            lgb_grid = GridSearchCV(
+                lgb.LGBMClassifier(random_state=42),
+                lgb_params,
+                cv=3,
+                scoring='roc_auc',
+                n_jobs=-1,
+                verbose=1
+            )
+            
+            lgb_grid.fit(X_balanced, y_balanced)
+            tuning_results['lightgbm'] = {
+                'best_params': lgb_grid.best_params_,
+                'best_score': lgb_grid.best_score_
+            }
+        
+        return tuning_results
     
-    def predict_proba(self, X: np.ndarray) -> np.ndarray:
-        """
-        Predict using adaptive weighted ensemble.
-        
-        Args:
-            X: Input features
-            
-        Returns:
-            Weighted ensemble scores
-        """
+    def save_model(self, filepath: str):
+        """모델 저장"""
         if not self.is_fitted:
-            raise ValueError("Ensemble must be fitted before prediction")
+            raise ValueError("모델이 훈련되지 않았습니다.")
         
-        X = self.validate_input(X)
+        model_data = {
+            'ensemble_model': self.ensemble_model,
+            'scaler': self.scaler,
+            'feature_names': self.feature_names,
+            'config': self.config
+        }
         
-        all_scores = []
-        valid_weights = []
+        joblib.dump(model_data, filepath)
+        print(f"모델이 {filepath}에 저장되었습니다.")
+    
+    def load_model(self, filepath: str):
+        """모델 로드"""
+        model_data = joblib.load(filepath)
         
-        for i, model in enumerate(self.base_models):
-            try:
-                scores = model.predict_proba(X)
-                
-                # Handle different output formats
-                if scores.ndim == 2 and scores.shape[1] == 2:
-                    scores = scores[:, 1]
-                elif scores.ndim == 2 and scores.shape[1] == 1:
-                    scores = scores.flatten()
-                
-                all_scores.append(scores)
-                valid_weights.append(self.adaptive_weights[i])
-                
-            except Exception as e:
-                logger.warning(f"Failed to get predictions from {model.model_name}: {e}")
-                continue
+        self.ensemble_model = model_data['ensemble_model']
+        self.scaler = model_data['scaler']
+        self.feature_names = model_data['feature_names']
+        self.config = model_data['config']
+        self.is_fitted = True
         
-        if not all_scores:
-            raise ValueError("No valid predictions from base models")
+        print(f"모델이 {filepath}에서 로드되었습니다.")
+    
+    def generate_submission(self, test_df: pd.DataFrame, output_path: str):
+        """대회 제출 파일 생성"""
+        if not self.is_fitted:
+            raise ValueError("모델이 훈련되지 않았습니다.")
         
-        # Weighted average
-        all_scores = np.array(all_scores)
-        valid_weights = np.array(valid_weights)
+        # 예측 수행
+        predictions = self.predict(test_df)
+        probabilities = self.predict_proba(test_df)[:, 1]  # 의심 선박일 확률
         
-        # Normalize weights
-        valid_weights = valid_weights / valid_weights.sum()
+        # 선박별로 집계 (여러 시점의 데이터가 있는 경우)
+        vessel_predictions = test_df.groupby('vessel_id').agg({
+            'vessel_id': 'first'
+        }).reset_index(drop=True)
         
-        ensemble_scores = np.average(all_scores, axis=0, weights=valid_weights)
+        # 선박별 예측 결과 집계
+        vessel_results = []
+        for vessel_id in test_df['vessel_id'].unique():
+            vessel_mask = test_df['vessel_id'] == vessel_id
+            vessel_preds = predictions[vessel_mask]
+            vessel_probs = probabilities[vessel_mask]
+            
+            # 다수결 투표 또는 평균 확률 사용
+            final_prediction = int(vessel_probs.mean() > 0.5)
+            final_confidence = vessel_probs.mean()
+            
+            vessel_results.append({
+                'vessel_id': vessel_id,
+                'is_suspicious': final_prediction,
+                'confidence': final_confidence
+            })
         
-        return ensemble_scores
+        # 제출 파일 생성
+        submission_df = pd.DataFrame(vessel_results)
+        submission_df.to_csv(output_path, index=False)
+        
+        print(f"제출 파일이 {output_path}에 저장되었습니다.")
+        print(f"총 {len(submission_df)} 선박 예측 완료")
+        print(f"의심 선박 예측 수: {submission_df['is_suspicious'].sum()}")
+        print(f"평균 신뢰도: {submission_df['confidence'].mean():.4f}")
+        
+        return submission_df
 
-
-def create_ensemble_model(config: Dict[str, Any], ensemble_type: str = 'weighted') -> EnsembleAnomalyDetector:
-    """
-    Create ensemble anomaly detection model.
-    
-    Args:
-        config: Configuration dictionary
-        ensemble_type: Type of ensemble ('weighted', 'stacking', 'voting', 'adaptive')
-        
-    Returns:
-        Ensemble anomaly detector
-    """
-    # Create base models
-    base_models = []
-    
-    # Add TrAISformer if enabled
-    if config.get('models', {}).get('traisformer', {}).get('enable', True):
-        base_models.append(TrAISformerAnomalyDetector(config))
-    
-    # Add clustering model if enabled
-    if config.get('models', {}).get('clustering', {}).get('enable', True):
-        base_models.append(CombinedClusteringAnomalyDetector(config))
-    
-    # Add statistical model if enabled
-    if config.get('models', {}).get('statistical', {}).get('enable', True):
-        base_models.append(StatisticalAnomalyDetector(config))
-    
-    if not base_models:
-        raise ValueError("No base models enabled in configuration")
-    
-    # Create ensemble
-    if ensemble_type == 'weighted':
-        return WeightedEnsembleAnomalyDetector(base_models, config)
-    elif ensemble_type == 'stacking':
-        return StackingEnsembleAnomalyDetector(base_models, config)
-    elif ensemble_type == 'voting':
-        return VotingEnsembleAnomalyDetector(base_models, config)
-    elif ensemble_type == 'adaptive':
-        return AdaptiveEnsembleAnomalyDetector(base_models, config)
-    else:
-        raise ValueError(f"Unknown ensemble type: {ensemble_type}") 
+def create_ensemble_pipeline(config: Dict) -> SuspiciousVesselEnsemble:
+    """앙상블 파이프라인 생성"""
+    return SuspiciousVesselEnsemble(config) 

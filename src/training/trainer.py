@@ -14,7 +14,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import classification_report
 
 from ..models.base_model import BaseAnomalyDetector
-from ..models.ensemble_model import create_ensemble_model
+from ..models.ensemble_model import SuspiciousVesselEnsemble
 from ..models.traisformer import create_traisformer_model
 from ..models.clustering_model import create_clustering_model
 from ..utils.metrics import AnomalyDetectionMetrics
@@ -75,7 +75,7 @@ class AnomalyDetectionTrainer:
         logger.info(f"Creating {model_type} model")
         
         if model_type == 'ensemble':
-            model = create_ensemble_model(self.config, ensemble_type='weighted')
+            model = SuspiciousVesselEnsemble(self.config)
         elif model_type == 'traisformer':
             model = create_traisformer_model(self.config)
         elif model_type == 'clustering':

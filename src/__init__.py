@@ -11,13 +11,12 @@ __email__ = "team@maritime-ai.com"
 from . import data
 from . import features
 from . import models
-from . import training
+# from . import training  # 불필요한 의존성으로 인해 주석 처리
 from . import utils
 
 __all__ = [
     "data",
     "features", 
     "models",
-    "training",
     "utils"
 ] 

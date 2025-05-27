@@ -1,0 +1,194 @@
+# 북한 의심 선박 탐지 대회 설정
+competition:
+  name: "North Korea Suspicious Vessel Detection"
+  description: "AIS 데이터를 활용한 북한 의심 선박 분류 및 신뢰도 예측"
+  
+# 데이터 설정
+data:
+  train_data_path: "train_data/original_data"
+  label_data_path: "train_data/label_data"
+  test_data_path: "test_data"
+  output_path: "output"
+  
+  # 기본 AIS 피처
+  basic_features:
+    - "datetime"
+    - "lat"
+    - "lon"
+    - "sog"  # Speed Over Ground
+    - "cog"  # Course Over Ground
+    
+  # 추가 환경 피처
+  environmental_features:
+    - "sea_surface_temperature"
+    - "sea_surface_salinity"
+    - "current_speed"
+    - "wind"
+    - "tide"
+    - "bottom_depth"
+    - "chlorophyll"
+    - "DIN"
+    - "DIP"
+    - "dissolved_oxygen"
+    - "fishery_density"
+    
+  # 시간 피처
+  temporal_features:
+    - "month"
+    - "hour"
+    
+  # 행동 패턴 피처
+  behavioral_features:
+    - "mean_ship_course_change"
+    - "standard_deviation_of_ship_course_change"
+    - "histogram_of_ship_course_change"
+    - "mean_ship_course_change_per_velocity_stage"
+    - "mean_velocity_change"
+    - "standard_deviation_of_velocity_change"
+    - "mean_velocity"
+    - "histogram_of_velocity"
+    - "histogram_of_velocity_change"
+    - "velocity_change_per_velocity_stage"
+
+# 피처 엔지니어링 설정
+feature_engineering:
+  # 시계열 윈도우 크기
+  time_windows: [10, 30, 60, 120]  # 분 단위
+  
+  # 궤적 분석 파라미터
+  trajectory_analysis:
+    min_points: 10
+    max_gap_minutes: 30
+    speed_threshold: 50  # knots
+    
+  # 이상 행동 탐지 임계값
+  anomaly_thresholds:
+    speed_change_rate: 5.0  # knots/minute
+    course_change_rate: 30.0  # degrees/minute
+    loitering_time: 60  # minutes
+    
+  # 지리적 영역 분석
+  geographic_zones:
+    north_korea_waters:
+      lat_min: 37.0
+      lat_max: 43.0
+      lon_min: 124.0
+      lon_max: 132.0
+    fishing_zones:
+      - name: "zone_1"
+        lat_min: 32.0
+        lat_max: 38.0
+        lon_min: 124.0
+        lon_max: 130.0
+
+# 모델 설정
+models:
+  # 앙상블 모델 구성
+  ensemble:
+    - name: "xgboost"
+      type: "XGBClassifier"
+      params:
+        n_estimators: 100
+        max_depth: 6
+        learning_rate: 0.1
+        subsample: 0.8
+        colsample_bytree: 0.8
+        min_child_weight: 3
+        reg_alpha: 0.1
+        reg_lambda: 0.1
+        random_state: 42
+        
+    - name: "lightgbm"
+      type: "LGBMClassifier"
+      params:
+        n_estimators: 100
+        max_depth: 6
+        learning_rate: 0.1
+        subsample: 0.8
+        colsample_bytree: 0.8
+        min_child_samples: 20
+        min_split_gain: 0.1
+        reg_alpha: 0.1
+        reg_lambda: 0.1
+        random_state: 42
+        verbose: -1
+        
+    - name: "catboost"
+      type: "CatBoostClassifier"
+      params:
+        iterations: 100
+        depth: 6
+        learning_rate: 0.1
+        l2_leaf_reg: 3
+        random_state: 42
+        verbose: False
+        
+    - name: "random_forest"
+      type: "RandomForestClassifier"
+      params:
+        n_estimators: 100
+        max_depth: 8
+        min_samples_split: 10
+        min_samples_leaf: 5
+        random_state: 42
+        
+    - name: "neural_network"
+      type: "MLPClassifier"
+      params:
+        hidden_layer_sizes: [256, 128, 64]
+        max_iter: 1000
+        random_state: 42
+
+# 훈련 설정
+training:
+  # 교차 검증
+  cv_folds: 5
+  stratified: True
+  
+  # 데이터 분할
+  train_ratio: 0.7
+  val_ratio: 0.15
+  test_ratio: 0.15
+  
+  # 클래스 불균형 처리
+  class_balance:
+    method: "SMOTE"  # SMOTE, ADASYN, RandomOverSampler
+    sampling_strategy: "auto"
+    
+  # 피처 선택
+  feature_selection:
+    method: "mutual_info"  # mutual_info, chi2, f_classif
+    k_best: 50
+
+# 평가 설정
+evaluation:
+  metrics:
+    - "accuracy"
+    - "precision"
+    - "recall"
+    - "f1_score"
+    - "roc_auc"
+    - "average_precision"
+    
+  # 신뢰도 보정
+  calibration:
+    method: "isotonic"  # isotonic, sigmoid
+    cv_folds: 3
+
+# 출력 설정
+output:
+  submission_format:
+    columns: ["vessel_id", "is_suspicious", "confidence"]
+    
+  # 모델 해석
+  interpretability:
+    feature_importance: True
+    shap_analysis: True
+    lime_analysis: False
+    
+  # 시각화
+  visualization:
+    trajectory_plots: True
+    feature_distributions: True
+    model_performance: True
+    confusion_matrix: True 

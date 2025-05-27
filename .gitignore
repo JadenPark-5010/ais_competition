@@ -146,3 +146,7 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.temp 
+
+# Catboost
+catboost_info/
+venv/
